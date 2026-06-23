@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Regra extra para o fundo da página inteira */
+body {
+  background-color: #f8fafc;
+}
