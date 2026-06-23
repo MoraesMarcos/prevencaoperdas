@@ -1,26 +1,67 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image, ActivityIndicator } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
-// ⚠️ ATENÇÃO: Substitua "192.168.1.X" pelo IP real do seu computador na rede Wi-Fi
-// Não use 'localhost' aqui, senão o telemóvel não encontra o Spring Boot do computador!
-const API_URL = 'http://localhost:8082/api/capturas';
+// ⚠️ ATENÇÃO: Substitua "localhost" pelo IP real do PC quando usar Wi-Fi.
+// Por USB (adb reverse), localhost funciona.
+const BASE_URL = 'http://localhost:8082/api';
+const API_CAPTURAS = `${BASE_URL}/capturas`;
+const API_BUSCAR = `${BASE_URL}/produtos/buscar`;
 
 export default function FormCaptura({ codigoBarras, onVoltar }) {
   const [loading, setLoading] = useState(false);
   const [fotos, setFotos] = useState([]); // data URIs base64
+
+  // Busca do produto no Uniplus
+  const [buscando, setBuscando] = useState(true);
+  const [statusBusca, setStatusBusca] = useState('buscando'); // buscando | encontrado | novo
+  const [opcoes, setOpcoes] = useState([]); // quando a digitacao acha varios
+
   const [form, setForm] = useState({
     codigoBarras: codigoBarras || '',
     nome: '',
-    marca: '',
-    categoria: '',
+    grupo: '',
     numeroLote: '',
     quantidadeInicial: '',
     dataVencimento: '', // Formato AAAA-MM-DD
     criadoPor: 'Gerente (App Mobile)'
   });
 
-  // Compressão agressiva (quality baixa) porque a foto vai em base64 no corpo do POST.
+  // Ao abrir, busca o produto no Uniplus pelo EAN (>=8 digitos) ou pelos ultimos digitos.
+  useEffect(() => {
+    buscarProduto(codigoBarras);
+  }, [codigoBarras]);
+
+  const buscarProduto = async (codigo) => {
+    if (!codigo) { setBuscando(false); setStatusBusca('novo'); return; }
+    setBuscando(true);
+    try {
+      const param = codigo.length >= 8 ? `ean=${encodeURIComponent(codigo)}` : `ultimos=${encodeURIComponent(codigo)}`;
+      const resposta = await fetch(`${API_BUSCAR}?${param}`);
+      const dados = await resposta.json();
+
+      if (!dados.encontrado || dados.produtos.length === 0) {
+        setStatusBusca('novo');
+      } else if (dados.produtos.length === 1) {
+        aplicarProduto(dados.produtos[0]);
+      } else {
+        setOpcoes(dados.produtos); // deixa o usuario escolher
+        setStatusBusca('encontrado');
+      }
+    } catch (e) {
+      console.error(e);
+      setStatusBusca('novo'); // sem conexao com o backend -> trata como novo
+    } finally {
+      setBuscando(false);
+    }
+  };
+
+  const aplicarProduto = (produto) => {
+    setForm(f => ({ ...f, codigoBarras: produto.ean || f.codigoBarras, nome: produto.nome, grupo: produto.grupo }));
+    setOpcoes([]);
+    setStatusBusca('encontrado');
+  };
+
   const opcoesImagem = { quality: 0.3, base64: true, allowsEditing: false };
 
   const adicionarFoto = (asset) => {
@@ -59,11 +100,16 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
 
     setLoading(true);
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetch(API_CAPTURAS, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...form,
+          codigoBarras: form.codigoBarras,
+          nome: form.nome,
+          categoria: form.grupo, // grupo do Uniplus guardado no campo categoria
+          numeroLote: form.numeroLote,
+          dataVencimento: form.dataVencimento,
+          criadoPor: form.criadoPor,
           quantidadeInicial: parseInt(form.quantidadeInicial, 10),
           fotosUrls: fotos
         })
@@ -71,38 +117,76 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
 
       if (response.ok) {
         Alert.alert("Sucesso", "Lote registado com sucesso!");
-        onVoltar(); // Volta para a câmara para ler o próximo
+        onVoltar();
       } else {
         Alert.alert("Erro", "Falha ao gravar no servidor (Backend pode estar desligado).");
       }
     } catch (error) {
-      Alert.alert("Erro de Ligação", "Não foi possível ligar ao Spring Boot. Confirmou o IP na variável API_URL?");
+      Alert.alert("Erro de Ligação", "Não foi possível ligar ao Spring Boot. Confirmou o IP/backend?");
       console.error(error);
     } finally {
       setLoading(false);
     }
   };
 
+  // Banner de status da busca no Uniplus
+  const renderStatus = () => {
+    if (buscando) {
+      return (
+        <View style={[styles.banner, styles.bannerBuscando]}>
+          <ActivityIndicator color="#1e40af" />
+          <Text style={styles.bannerTexto}>Buscando no Uniplus...</Text>
+        </View>
+      );
+    }
+    if (statusBusca === 'encontrado' && opcoes.length === 0) {
+      return (
+        <View style={[styles.banner, styles.bannerOk]}>
+          <Text style={styles.bannerTextoOk}>✓ Produto encontrado no Uniplus</Text>
+        </View>
+      );
+    }
+    if (statusBusca === 'novo') {
+      return (
+        <View style={[styles.banner, styles.bannerNovo]}>
+          <Text style={styles.bannerTextoNovo}>Produto novo — digite o nome abaixo</Text>
+        </View>
+      );
+    }
+    return null;
+  };
+
+  // Quando a digitacao dos ultimos digitos acha varios produtos
+  const renderOpcoes = () => {
+    if (opcoes.length === 0) return null;
+    return (
+      <View style={styles.opcoesBox}>
+        <Text style={styles.label}>Vários produtos com esse final — escolha:</Text>
+        {opcoes.map((p, i) => (
+          <TouchableOpacity key={i} style={styles.opcaoItem} onPress={() => aplicarProduto(p)}>
+            <Text style={styles.opcaoNome}>{p.nome}</Text>
+            <Text style={styles.opcaoInfo}>{p.ean} · {p.grupo}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
   return (
     <ScrollView contentContainerStyle={styles.container}>
        <Text style={styles.title}>Registar Validade</Text>
+
+       {renderStatus()}
+       {renderOpcoes()}
 
        <Text style={styles.label}>Código de Barras</Text>
        <TextInput style={[styles.input, styles.inputDisabled]} value={form.codigoBarras} editable={false} />
 
        <Text style={styles.label}>Nome do Produto</Text>
-       <TextInput style={styles.input} value={form.nome} onChangeText={t => setForm({...form, nome: t})} placeholder="Ex: Refrigerante Cola 2L" />
+       <TextInput style={styles.input} value={form.nome} onChangeText={t => setForm({...form, nome: t})} placeholder="Ex: Leite Condensado Moça 395g" />
 
-       <View style={styles.row}>
-         <View style={{flex: 1, marginRight: 10}}>
-            <Text style={styles.label}>Marca</Text>
-            <TextInput style={styles.input} value={form.marca} onChangeText={t => setForm({...form, marca: t})} placeholder="Ex: Coca-Cola" />
-         </View>
-         <View style={{flex: 1}}>
-            <Text style={styles.label}>Categoria</Text>
-            <TextInput style={styles.input} value={form.categoria} onChangeText={t => setForm({...form, categoria: t})} placeholder="Ex: Bebidas" />
-         </View>
-       </View>
+       <Text style={styles.label}>Grupo</Text>
+       <TextInput style={[styles.input, styles.inputDisabled]} value={form.grupo} editable={false} placeholder="(vem do Uniplus)" />
 
        <View style={styles.row}>
          <View style={{flex: 1, marginRight: 10}}>
@@ -118,7 +202,7 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
        <Text style={styles.label}>Data de Vencimento (Ano-Mês-Dia)</Text>
        <TextInput style={styles.input} onChangeText={t => setForm({...form, dataVencimento: t})} placeholder="2026-12-31" />
 
-       <Text style={styles.label}>Evidências (fotos)</Text>
+       <Text style={styles.label}>Evidências (fotos) — opcional</Text>
        <View style={styles.fotoBotoes}>
          <TouchableOpacity style={styles.btnFoto} onPress={tirarFoto}>
            <Text style={styles.btnFotoTexto}>📷 Tirar Foto</Text>
@@ -154,11 +238,22 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
 
 const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 30, flexGrow: 1 },
-  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 25, color: '#1e40af' },
+  title: { fontSize: 24, fontWeight: 'bold', marginBottom: 16, color: '#1e40af' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   label: { fontSize: 13, fontWeight: 'bold', marginBottom: 5, color: '#4b5563', textTransform: 'uppercase' },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#d1d5db', padding: 15, borderRadius: 10, marginBottom: 15, fontSize: 16 },
-  inputDisabled: { backgroundColor: '#e5e7eb', color: '#6b7280' },
+  inputDisabled: { backgroundColor: '#e5e7eb', color: '#374151' },
+  banner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, marginBottom: 16 },
+  bannerBuscando: { backgroundColor: '#dbeafe' },
+  bannerOk: { backgroundColor: '#d1fae5' },
+  bannerNovo: { backgroundColor: '#fef3c7' },
+  bannerTexto: { color: '#1e40af', fontWeight: 'bold' },
+  bannerTextoOk: { color: '#065f46', fontWeight: 'bold' },
+  bannerTextoNovo: { color: '#92400e', fontWeight: 'bold' },
+  opcoesBox: { marginBottom: 16 },
+  opcaoItem: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#d1d5db', borderRadius: 10, padding: 12, marginBottom: 8 },
+  opcaoNome: { fontSize: 15, fontWeight: 'bold', color: '#111827' },
+  opcaoInfo: { fontSize: 12, color: '#6b7280', marginTop: 2 },
   fotoBotoes: { flexDirection: 'row', gap: 12, marginBottom: 12 },
   btnFoto: { flex: 1, backgroundColor: '#0d9488', padding: 14, borderRadius: 10, alignItems: 'center' },
   btnFotoTexto: { color: '#fff', fontWeight: 'bold', fontSize: 15 },
