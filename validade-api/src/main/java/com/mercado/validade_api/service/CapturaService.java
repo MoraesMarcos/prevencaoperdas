@@ -72,6 +72,14 @@ public class CapturaService {
         return montarResposta(lote, fotos);
     }
 
+    /** Próximo número de lote sequencial para o produto (1, 2, 3...). Produto novo = 1. */
+    @Transactional(readOnly = true)
+    public int proximoNumeroLote(String codigoBarras) {
+        return produtoRepository.findByCodigoBarras(codigoBarras)
+                .map(p -> (int) loteRepository.countByProdutoId(p.getId()) + 1)
+                .orElse(1);
+    }
+
     @Transactional(readOnly = true)
     public List<CapturaResponseDTO> listar() {
         List<CapturaResponseDTO> resultado = new ArrayList<>();

@@ -4,6 +4,7 @@ import com.mercado.validade_api.dto.AcompanhamentoResponseDTO;
 import com.mercado.validade_api.dto.GiroDTO;
 import com.mercado.validade_api.entity.LoteCaptura;
 import com.mercado.validade_api.entity.Produto;
+import com.mercado.validade_api.repository.LancamentoFornecedorRepository;
 import com.mercado.validade_api.repository.LoteCapturaRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -14,6 +15,8 @@ import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Monta o acompanhamento: cada lote capturado (Supabase) cruzado com o giro real
@@ -30,11 +33,13 @@ public class AcompanhamentoService {
 
     private final LoteCapturaRepository loteRepository;
     private final GiroService giroService;
+    private final LancamentoFornecedorRepository lancamentoRepository;
 
     @Transactional(readOnly = true)
     public List<AcompanhamentoResponseDTO> listar(boolean incluirNovos) {
         List<AcompanhamentoResponseDTO> resultado = new ArrayList<>();
         LocalDateTime corteHistorico = LocalDateTime.now().minusDays(DIAS_FASE_HISTORICO);
+        Set<UUID> lotesComRebaixa = lancamentoRepository.findLoteIdsComRebaixa();
 
         for (LoteCaptura lote : loteRepository.findAllByOrderByDataVencimentoAsc()) {
             // Regra: só aparece depois de 30 dias cadastrado (a menos que incluirNovos=true para teste).
@@ -47,15 +52,28 @@ public class AcompanhamentoService {
                     : dias <= LIMITE_CRITICO ? "CRITICO"
                     : dias <= LIMITE_ATENCAO ? "ATENCAO" : "NORMAL";
 
-            GiroDTO giro = giroService.calcular(produto.getCodigoBarras());
+            // Vendido no Uniplus desde o dia que o lote foi capturado no app
+            java.time.LocalDate dataCaptura = lote.getCriadoEm() != null
+                    ? lote.getCriadoEm().toLocalDate()
+                    : lote.getDataVencimento().minusYears(1); // fallback improvavel
+
+            // UMA consulta ao Uniplus: 30d, 90d e desde a captura
+            GiroDTO giro = giroService.calcular(produto.getCodigoBarras(), dataCaptura);
+            int vendidoDesdeCaptura = giro.getVendidoDesdeCaptura();
+            int quantidadeRestante = Math.max(0, lote.getQuantidadeInicial() - vendidoDesdeCaptura);
 
             // Velocidade primaria: 30 dias (mais recente); se nao houver, usa 90 dias.
             double velocidadeDia = giro.getVelocidade30() > 0 ? giro.getVelocidade30() : giro.getVelocidade90();
             Long diasParaEsgotar = velocidadeDia > 0
-                    ? (long) Math.ceil(lote.getQuantidadeAtual() / velocidadeDia)
+                    ? (long) Math.ceil(quantidadeRestante / velocidadeDia)
                     : null;
 
-            Recomendacao rec = recomendar(status, dias, diasParaEsgotar);
+            // Lote totalmente vendido: o giro do Uniplus ja consumiu toda a quantidade inicial.
+            boolean vendido = quantidadeRestante <= 0;
+            Recomendacao rec = vendido
+                    ? new Recomendacao("Vendido — baixar do estoque", "VENDIDO")
+                    : recomendar(status, dias, diasParaEsgotar);
+            String statusFinal = vendido ? "VENDIDO" : status;
 
             resultado.add(AcompanhamentoResponseDTO.builder()
                     .loteId(lote.getId())
@@ -66,7 +84,7 @@ public class AcompanhamentoService {
                     .quantidadeAtual(lote.getQuantidadeAtual())
                     .dataVencimento(lote.getDataVencimento())
                     .diasParaVencer(dias)
-                    .status(status)
+                    .status(statusFinal)
                     .vendido30d(giro.getVendido30d())
                     .vendido90d(giro.getVendido90d())
                     .velocidade30(giro.getVelocidade30())
@@ -74,6 +92,9 @@ public class AcompanhamentoService {
                     .diasParaEsgotar(diasParaEsgotar)
                     .recomendacao(rec.texto())
                     .severidade(rec.severidade())
+                    .rebaixaGerada(lotesComRebaixa.contains(lote.getId()))
+                    .vendidoDesdeCaptura(vendidoDesdeCaptura)
+                    .quantidadeRestante(quantidadeRestante)
                     .build());
         }
         return resultado;

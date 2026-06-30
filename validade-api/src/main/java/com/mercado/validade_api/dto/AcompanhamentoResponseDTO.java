@@ -30,4 +30,9 @@ public class AcompanhamentoResponseDTO {
     private Long diasParaEsgotar; // null = sem giro (não esgota)
     private String recomendacao;
     private String severidade; // OK | OBSERVAR | ATENCAO | CRITICO — controla a cor do selo
+    private boolean rebaixaGerada; // já existe rebaixa lançada para este lote?
+
+    // Estoque real: inicial lançado no app vs. vendido no Uniplus desde a captura
+    private int vendidoDesdeCaptura;
+    private int quantidadeRestante; // max(0, quantidadeInicial - vendidoDesdeCaptura)
 }

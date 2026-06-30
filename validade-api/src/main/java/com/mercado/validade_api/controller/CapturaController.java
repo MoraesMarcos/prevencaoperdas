@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/capturas")
@@ -26,5 +27,11 @@ public class CapturaController {
     @GetMapping
     public List<CapturaResponseDTO> listar() {
         return capturaService.listar();
+    }
+
+    /** Próximo número de lote sequencial do produto (para preencher automaticamente no app). */
+    @GetMapping("/proximo-lote")
+    public Map<String, Integer> proximoLote(@RequestParam String codigoBarras) {
+        return Map.of("numeroLote", capturaService.proximoNumeroLote(codigoBarras));
     }
 }

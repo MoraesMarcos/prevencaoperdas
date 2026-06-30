@@ -10,6 +10,7 @@ public class LancamentoRequestDTO {
     private Long fornecedorId;     // Uniplus entidade.id
     private LancamentoTipo tipo;   // TROCA | REBAIXA | AVARIA | NEGOCIACAO | PAGAMENTO
     private BigDecimal valor;
+    private String ean;
     private String descricao;
     private String produtoNome;
     private String criadoPor;

@@ -1,12 +1,27 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView, Image, ActivityIndicator, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 // ⚠️ ATENÇÃO: Substitua "localhost" pelo IP real do PC quando usar Wi-Fi.
 // Por USB (adb reverse), localhost funciona.
 const BASE_URL = 'http://localhost:8082/api';
 const API_CAPTURAS = `${BASE_URL}/capturas`;
 const API_BUSCAR = `${BASE_URL}/produtos/buscar`;
+const API_PROXIMO_LOTE = `${BASE_URL}/capturas/proximo-lote`;
+
+function formatarDataISO(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function formatarDataBR(isoString) {
+  if (!isoString) return '';
+  const [y, m, d] = isoString.split('-');
+  return `${d}/${m}/${y}`;
+}
 
 export default function FormCaptura({ codigoBarras, onVoltar }) {
   const [loading, setLoading] = useState(false);
@@ -16,6 +31,10 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
   const [buscando, setBuscando] = useState(true);
   const [statusBusca, setStatusBusca] = useState('buscando'); // buscando | encontrado | novo
   const [opcoes, setOpcoes] = useState([]); // quando a digitacao acha varios
+
+  // Calendário da validade
+  const [mostrarCalendario, setMostrarCalendario] = useState(false);
+  const [dataSelecionada, setDataSelecionada] = useState(new Date());
 
   const [form, setForm] = useState({
     codigoBarras: codigoBarras || '',
@@ -27,10 +46,33 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
     criadoPor: 'Gerente (App Mobile)'
   });
 
-  // Ao abrir, busca o produto no Uniplus pelo EAN (>=8 digitos) ou pelos ultimos digitos.
+  // Ao abrir, busca o produto no Uniplus pelo EAN (>=8 digitos) ou pelos ultimos digitos,
+  // e ja busca o proximo numero de lote sequencial para esse produto.
   useEffect(() => {
     buscarProduto(codigoBarras);
+    buscarProximoLote(codigoBarras);
   }, [codigoBarras]);
+
+  const buscarProximoLote = async (codigo) => {
+    if (!codigo) return;
+    try {
+      const resposta = await fetch(`${API_PROXIMO_LOTE}?codigoBarras=${encodeURIComponent(codigo)}`);
+      const dados = await resposta.json();
+      if (dados.numeroLote) {
+        setForm(f => ({ ...f, numeroLote: String(dados.numeroLote) }));
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const onMudarData = (event, dataEscolhida) => {
+    setMostrarCalendario(Platform.OS === 'ios'); // iOS mantem aberto ate confirmar, Android fecha sozinho
+    if (event.type === 'set' && dataEscolhida) {
+      setDataSelecionada(dataEscolhida);
+      setForm(f => ({ ...f, dataVencimento: formatarDataISO(dataEscolhida) }));
+    }
+  };
 
   const buscarProduto = async (codigo) => {
     if (!codigo) { setBuscando(false); setStatusBusca('novo'); return; }
@@ -190,8 +232,8 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
 
        <View style={styles.row}>
          <View style={{flex: 1, marginRight: 10}}>
-            <Text style={styles.label}>Lote</Text>
-            <TextInput style={styles.input} onChangeText={t => setForm({...form, numeroLote: t})} placeholder="Ex: L123" />
+            <Text style={styles.label}>Lote (automático)</Text>
+            <TextInput style={[styles.input, styles.inputDisabled]} value={form.numeroLote} editable={false} placeholder="..." />
          </View>
          <View style={{flex: 1}}>
             <Text style={styles.label}>Qtd. Total</Text>
@@ -199,8 +241,21 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
          </View>
        </View>
 
-       <Text style={styles.label}>Data de Vencimento (Ano-Mês-Dia)</Text>
-       <TextInput style={styles.input} onChangeText={t => setForm({...form, dataVencimento: t})} placeholder="2026-12-31" />
+       <Text style={styles.label}>Data de Vencimento</Text>
+       <TouchableOpacity style={styles.inputData} onPress={() => setMostrarCalendario(true)}>
+         <Text style={form.dataVencimento ? styles.inputDataTexto : styles.inputDataPlaceholder}>
+           {form.dataVencimento ? formatarDataBR(form.dataVencimento) : 'Toque para escolher a data'}
+         </Text>
+       </TouchableOpacity>
+       {mostrarCalendario && (
+         <DateTimePicker
+           value={dataSelecionada}
+           mode="date"
+           display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+           minimumDate={new Date()}
+           onChange={onMudarData}
+         />
+       )}
 
        <Text style={styles.label}>Evidências (fotos) — opcional</Text>
        <View style={styles.fotoBotoes}>
@@ -243,6 +298,9 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: 'bold', marginBottom: 5, color: '#4b5563', textTransform: 'uppercase' },
   input: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#d1d5db', padding: 15, borderRadius: 10, marginBottom: 15, fontSize: 16 },
   inputDisabled: { backgroundColor: '#e5e7eb', color: '#374151' },
+  inputData: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#d1d5db', padding: 15, borderRadius: 10, marginBottom: 15 },
+  inputDataTexto: { fontSize: 16, color: '#111827', fontWeight: 'bold' },
+  inputDataPlaceholder: { fontSize: 16, color: '#9ca3af' },
   banner: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 10, marginBottom: 16 },
   bannerBuscando: { backgroundColor: '#dbeafe' },
   bannerOk: { backgroundColor: '#d1fae5' },

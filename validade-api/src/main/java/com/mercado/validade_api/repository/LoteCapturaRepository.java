@@ -11,4 +11,7 @@ import java.util.UUID;
 public interface LoteCapturaRepository extends JpaRepository<LoteCaptura, UUID> {
     // Para o painel: lotes ordenados pelo vencimento mais próximo
     List<LoteCaptura> findAllByOrderByDataVencimentoAsc();
+
+    // Para gerar o próximo número de lote sequencial do produto (1, 2, 3...)
+    long countByProdutoId(UUID produtoId);
 }

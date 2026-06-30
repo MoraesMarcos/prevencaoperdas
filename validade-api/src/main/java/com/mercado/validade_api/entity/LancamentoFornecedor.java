@@ -41,6 +41,17 @@ public class LancamentoFornecedor {
     @Column(name = "valor", nullable = false, precision = 14, scale = 2)
     private BigDecimal valor;
 
+    // Quanto já foi abatido/pago deste lançamento (para abatimento FIFO parcial).
+    @Column(name = "valor_abatido", precision = 14, scale = 2)
+    private BigDecimal valorAbatido;
+
+    @Column(name = "ean")
+    private String ean;
+
+    // Lote de captura que originou este lançamento (rebaixa automática). Evita duplicar.
+    @Column(name = "lote_id")
+    private UUID loteId;
+
     @Column(name = "descricao")
     private String descricao;
 

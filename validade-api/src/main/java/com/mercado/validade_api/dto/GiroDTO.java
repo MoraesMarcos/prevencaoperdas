@@ -12,4 +12,5 @@ public class GiroDTO {
     private int vendido90d;
     private double velocidade30; // unidades/dia nos ultimos 30 dias
     private double velocidade90; // unidades/dia nos ultimos 90 dias
+    private int vendidoDesdeCaptura; // unidades vendidas desde a data de captura do lote
 }

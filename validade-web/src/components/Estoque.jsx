@@ -1,11 +1,64 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertCircle, CheckCircle2, Clock, RefreshCw, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Package, AlertCircle, CheckCircle2, Clock, RefreshCw, AlertTriangle, TrendingUp, TicketPercent, PackageCheck, Users, X, Search } from 'lucide-react';
+
+const API_FORN = 'http://localhost:8082/api/fornecedores/buscar';
+const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function Estoque() {
   const [itens, setItens] = useState([]);
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState(null);
   const [incluirNovos, setIncluirNovos] = useState(true); // teste: mostra lotes com < 30 dias
+  const [gerando, setGerando] = useState(null); // loteId em processamento
+  const [seletor, setSeletor] = useState(null); // item aguardando escolha de fornecedor
+
+  // Faz a chamada de gerar-rebaixa; fornecedorId opcional. Retorna true se criou.
+  const chamarGerar = async (loteId, fornecedorId) => {
+    const r = await fetch(`http://localhost:8082/api/acompanhamento/${loteId}/gerar-rebaixa`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(fornecedorId ? { fornecedorId } : {}),
+    });
+    const res = await r.json().catch(() => ({}));
+    return { ok: r.ok, res };
+  };
+
+  const gerarRebaixa = async (item) => {
+    setGerando(item.loteId);
+    try {
+      const { ok, res } = await chamarGerar(item.loteId, null);
+      if (!ok) {
+        // Produto sem fornecedor no Uniplus → abrir seletor para escolher quem paga.
+        const msg = res.message || res.mensagem || '';
+        if (/fornecedor/i.test(msg)) {
+          setSeletor(item);
+          return;
+        }
+        alert(msg || 'Não foi possível gerar a rebaixa.');
+        return;
+      }
+      alert(res.mensagem || 'Rebaixa criada.');
+      await carregarDados();
+    } catch {
+      alert('Falha ao gerar rebaixa.');
+    } finally {
+      setGerando(null);
+    }
+  };
+
+  const gerarComFornecedor = async (loteId, fornecedorId) => {
+    setGerando(loteId);
+    try {
+      const { ok, res } = await chamarGerar(loteId, fornecedorId);
+      alert(res.mensagem || res.message || (ok ? 'Rebaixa criada.' : 'Não foi possível.'));
+      setSeletor(null);
+      await carregarDados();
+    } catch {
+      alert('Falha ao gerar rebaixa.');
+    } finally {
+      setGerando(null);
+    }
+  };
 
   const carregarDados = async () => {
     setLoading(true);
@@ -26,6 +79,7 @@ export default function Estoque() {
 
   const getSeveridadeColor = (sev) => {
     switch (sev) {
+      case 'VENDIDO': return 'bg-emerald-100 text-emerald-800 border-emerald-200';
       case 'CRITICO': return 'bg-red-100 text-red-800 border-red-200';
       case 'ATENCAO': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
       case 'OBSERVAR': return 'bg-gray-100 text-gray-700 border-gray-300';
@@ -36,6 +90,7 @@ export default function Estoque() {
 
   const getSeveridadeIcon = (sev) => {
     switch (sev) {
+      case 'VENDIDO': return <PackageCheck size={16} className="text-emerald-600" />;
       case 'CRITICO': return <AlertCircle size={16} className="text-red-600" />;
       case 'ATENCAO': return <AlertTriangle size={16} className="text-yellow-600" />;
       case 'OBSERVAR': return <Clock size={16} className="text-gray-500" />;
@@ -114,12 +169,24 @@ export default function Estoque() {
                   </td>
                 </tr>
               ) : (
-                itens.map((it) => (
-                  <tr key={it.loteId} className="hover:bg-blue-50/30 transition-colors">
+                itens.map((it) => {
+                  const vendido = it.severidade === 'VENDIDO';
+                  return (
+                  <tr key={it.loteId} className={`transition-colors ${vendido ? 'bg-gray-50 opacity-60 line-through decoration-gray-400' : 'hover:bg-blue-50/30'}`}>
                     <td className="p-4 font-bold text-gray-900">{it.produtoNome}</td>
                     <td className="p-4 text-gray-500 text-sm">{it.grupo}</td>
                     <td className="p-4 text-gray-600">{it.numeroLote}</td>
-                    <td className="p-4 text-center font-bold text-lg text-gray-700">{it.quantidadeAtual}</td>
+                    <td className="p-4 text-center">
+                      <div className="font-bold text-lg text-gray-900">{it.quantidadeRestante}</div>
+                      <div className="text-xs text-gray-400 leading-tight">
+                        {it.quantidadeAtual} inicial
+                      </div>
+                      {it.vendidoDesdeCaptura > 0 && (
+                        <div className="text-xs text-emerald-600 font-medium leading-tight">
+                          −{it.vendidoDesdeCaptura} vendidos
+                        </div>
+                      )}
+                    </td>
                     <td className="p-4">
                       <div className="flex flex-col">
                         <span className="font-medium">{new Date(it.dataVencimento).toLocaleDateString('pt-BR')}</span>
@@ -145,14 +212,115 @@ export default function Estoque() {
                         {getSeveridadeIcon(it.severidade)}
                         {it.recomendacao}
                       </span>
+                      {(it.status === 'CRITICO' || it.status === 'ATENCAO') && (
+                        it.rebaixaGerada ? (
+                          <span className="mt-2 flex items-center gap-1 text-xs text-emerald-600 font-semibold">
+                            <CheckCircle2 size={14} /> Rebaixa gerada
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => gerarRebaixa(it)}
+                            disabled={gerando === it.loteId}
+                            className="mt-2 flex items-center gap-1 text-xs bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg font-semibold"
+                          >
+                            <TicketPercent size={14} /> {gerando === it.loteId ? 'Gerando...' : 'Gerar rebaixa'}
+                          </button>
+                        )
+                      )}
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {seletor && (
+        <SeletorFornecedor
+          item={seletor}
+          gerando={gerando === seletor.loteId}
+          onFechar={() => setSeletor(null)}
+          onEscolher={(fornId) => gerarComFornecedor(seletor.loteId, fornId)}
+        />
+      )}
     </>
+  );
+}
+
+function SeletorFornecedor({ item, gerando, onFechar, onEscolher }) {
+  const [termo, setTermo] = useState('');
+  const [lista, setLista] = useState([]);
+  const [buscando, setBuscando] = useState(false);
+
+  const buscar = async (t) => {
+    setBuscando(true);
+    try {
+      const r = await fetch(`${API_FORN}?termo=${encodeURIComponent(t)}`);
+      setLista(r.ok ? await r.json() : []);
+    } catch {
+      setLista([]);
+    } finally {
+      setBuscando(false);
+    }
+  };
+
+  useEffect(() => { buscar(''); }, []);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onFechar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200">
+          <div>
+            <h3 className="font-bold text-lg text-gray-900">Escolher fornecedor da rebaixa</h3>
+            <p className="text-sm text-gray-500">
+              {item.produtoNome} — lote {item.numeroLote} · {item.quantidadeAtual} un.
+            </p>
+            <p className="text-xs text-amber-600 mt-1">
+              Produto sem compra no Uniplus: sem custo conhecido, a rebaixa entra com valor R$ 0,00 (ajuste depois na Conta Fornecedor, se precisar).
+            </p>
+          </div>
+          <button onClick={onFechar} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+        </div>
+
+        <div className="p-5 border-b border-gray-100">
+          <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3">
+            <Search size={16} className="text-gray-400" />
+            <input
+              autoFocus
+              value={termo}
+              onChange={(e) => { setTermo(e.target.value); buscar(e.target.value); }}
+              placeholder="Buscar fornecedor por nome ou CNPJ..."
+              className="flex-1 bg-transparent py-2.5 outline-none text-sm"
+            />
+            {buscando && <RefreshCw size={14} className="animate-spin text-gray-400" />}
+          </div>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {lista.length === 0 ? (
+            <p className="p-6 text-center text-gray-400 text-sm">Nenhum fornecedor encontrado.</p>
+          ) : (
+            lista.map((f) => (
+              <button
+                key={f.id}
+                disabled={gerando}
+                onClick={() => {
+                  if (window.confirm(`Gerar rebaixa na conta de ${f.nome}?`)) onEscolher(f.id);
+                }}
+                className="w-full text-left px-5 py-3 hover:bg-blue-50 border-b border-gray-50 disabled:opacity-50 flex justify-between items-center"
+              >
+                <div>
+                  <div className="font-semibold text-gray-800">{f.nome}</div>
+                  <div className="text-xs text-gray-400">{f.cnpjcpf || '—'}</div>
+                </div>
+                <Users size={16} className="text-blue-500" />
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

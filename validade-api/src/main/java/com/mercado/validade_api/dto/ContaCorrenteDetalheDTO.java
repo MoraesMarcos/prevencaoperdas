@@ -16,6 +16,7 @@ public class ContaCorrenteDetalheDTO {
     private String whatsapp;
     private String email;
     private BigDecimal saldoAtivo;
+    private BigDecimal bonificacaoDisponivel;         // crédito de bonificação (1910) ainda disponível
     private List<LancamentoResponseDTO> ativas;       // lançamentos em aberto
     private List<LancamentoResponseDTO> finalizadas;  // histórico
 }

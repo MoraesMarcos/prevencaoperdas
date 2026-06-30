@@ -9,7 +9,8 @@ public enum LancamentoTipo {
     REBAIXA(1),
     AVARIA(1),
     NEGOCIACAO(-1),
-    PAGAMENTO(-1);
+    PAGAMENTO(-1),
+    BONIFICACAO(-1); // crédito de bonificação aplicado para abater trocas (registro finalizado)
 
     private final int sinal;
 

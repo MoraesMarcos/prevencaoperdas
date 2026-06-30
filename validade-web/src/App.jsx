@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
-import { Package, Users } from 'lucide-react';
+import { Package, Users, Building2, Images, TicketPercent } from 'lucide-react';
 import Estoque from './components/Estoque';
 import ContaCorrente from './components/ContaCorrente';
+import ContaMercado from './components/ContaMercado';
+import EstoqueFotos from './components/EstoqueFotos';
+import RebaixaParceria from './components/RebaixaParceria';
 
 const ABAS = [
   { id: 'estoque', label: 'Validade & Giro', icon: Package },
-  { id: 'fornecedores', label: 'Conta Corrente', icon: Users },
+  { id: 'fotos', label: 'Estoque (fotos)', icon: Images },
+  { id: 'parceria', label: 'Rebaixa Parceria', icon: TicketPercent },
+  { id: 'fornecedores', label: 'Conta Fornecedor', icon: Users },
+  { id: 'mercado', label: 'Conta Mercado', icon: Building2 },
 ];
 
 export default function App() {
@@ -31,7 +37,11 @@ export default function App() {
 
       <div className="p-6">
         <div className="max-w-7xl mx-auto">
-          {aba === 'estoque' ? <Estoque /> : <ContaCorrente />}
+          {aba === 'estoque' && <Estoque />}
+          {aba === 'fotos' && <EstoqueFotos />}
+          {aba === 'parceria' && <RebaixaParceria />}
+          {aba === 'fornecedores' && <ContaCorrente />}
+          {aba === 'mercado' && <ContaMercado />}
         </div>
       </div>
     </div>
