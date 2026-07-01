@@ -64,9 +64,6 @@ public class RebaixaService {
             fornId = f.getId();
             fornNome = f.getNome();
             fornWhatsapp = f.getWhatsapp();
-            // Se o escolhido for o mesmo do último, aproveita o custo; senão, sem custo conhecido (0).
-            custo = (ultimo != null && fornecedorIdEscolhido.equals(ultimo.getFornecedorId()) && ultimo.getCustoUnitario() != null)
-                    ? ultimo.getCustoUnitario() : BigDecimal.ZERO;
         } else {
             if (ultimo == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -75,7 +72,15 @@ public class RebaixaService {
             fornId = ultimo.getFornecedorId();
             fornNome = ultimo.getFornecedorNome();
             fornWhatsapp = ultimo.getWhatsapp();
-            custo = ultimo.getCustoUnitario() != null ? ultimo.getCustoUnitario() : BigDecimal.ZERO;
+        }
+
+        // Custo: se o último fornecedor (do EAN) trouxe custo, usa-o; senão, resolve o custo
+        // do produto pelo Uniplus (precocusto -> sh_custo -> última entrada). Só zera se o
+        // produto não existir no Uniplus (cadastro de teste).
+        if (ultimo != null && ultimo.getCustoUnitario() != null && ultimo.getCustoUnitario().signum() > 0) {
+            custo = ultimo.getCustoUnitario();
+        } else {
+            custo = fornecedorService.custoDoProduto(produto.getCodigoBarras());
         }
 
         BigDecimal valor = custo.multiply(BigDecimal.valueOf(lote.getQuantidadeAtual()));

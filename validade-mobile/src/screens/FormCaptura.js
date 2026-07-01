@@ -3,9 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView,
 import * as ImagePicker from 'expo-image-picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 
-// ⚠️ ATENÇÃO: Substitua "localhost" pelo IP real do PC quando usar Wi-Fi.
-// Por USB (adb reverse), localhost funciona.
-const BASE_URL = 'http://localhost:8082/api';
+// URL do backend. Em produção (APK), defina EXPO_PUBLIC_API_URL no build (eas.json)
+// apontando para o Render, ex.: https://validade-api.onrender.com
+// Local por USB (adb reverse): http://localhost:8082
+const API_BASE = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8082';
+const BASE_URL = `${API_BASE}/api`;
 const API_CAPTURAS = `${BASE_URL}/capturas`;
 const API_BUSCAR = `${BASE_URL}/produtos/buscar`;
 const API_PROXIMO_LOTE = `${BASE_URL}/capturas/proximo-lote`;

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { TicketPercent, RefreshCw, AlertCircle, Users, Building2, CheckCircle2, X, Search } from 'lucide-react';
 
-const API = 'http://localhost:8082/api/rebaixa-parceria';
-const API_FORN = 'http://localhost:8082/api/fornecedores/buscar';
+import { API_BASE } from '../config';
+const API = `${API_BASE}/api/rebaixa-parceria`;
+const API_FORN = `${API_BASE}/api/fornecedores/buscar`;
 
 const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 

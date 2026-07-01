@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Users, RefreshCw, Plus, Check, X, ArrowLeft, Download, Printer, Search, Gift } from 'lucide-react';
+import { API_BASE } from '../config';
 
-const BASE = 'http://localhost:8082/api';
+const BASE = `${API_BASE}/api`;
 const TIPOS = ['TROCA', 'REBAIXA', 'AVARIA', 'NEGOCIACAO'];
 const moeda = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Images, RefreshCw, Search, ImageOff } from 'lucide-react';
+import { API_BASE } from '../config';
 
-const BASE = 'http://localhost:8082/api';
+const BASE = `${API_BASE}/api`;
 
 const STATUS_COR = {
   CRITICO: 'bg-red-100 text-red-700 border-red-200',

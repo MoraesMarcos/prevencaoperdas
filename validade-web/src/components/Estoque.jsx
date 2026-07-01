@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Package, AlertCircle, CheckCircle2, Clock, RefreshCw, AlertTriangle, TrendingUp, TicketPercent, PackageCheck, Users, X, Search } from 'lucide-react';
+import { API_BASE } from '../config';
 
-const API_FORN = 'http://localhost:8082/api/fornecedores/buscar';
+const API_FORN = `${API_BASE}/api/fornecedores/buscar`;
 const brl = (v) => Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function Estoque() {
@@ -14,7 +15,7 @@ export default function Estoque() {
 
   // Faz a chamada de gerar-rebaixa; fornecedorId opcional. Retorna true se criou.
   const chamarGerar = async (loteId, fornecedorId) => {
-    const r = await fetch(`http://localhost:8082/api/acompanhamento/${loteId}/gerar-rebaixa`, {
+    const r = await fetch(`${API_BASE}/api/acompanhamento/${loteId}/gerar-rebaixa`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fornecedorId ? { fornecedorId } : {}),
@@ -28,13 +29,14 @@ export default function Estoque() {
     try {
       const { ok, res } = await chamarGerar(item.loteId, null);
       if (!ok) {
-        // Produto sem fornecedor no Uniplus → abrir seletor para escolher quem paga.
         const msg = res.message || res.mensagem || '';
-        if (/fornecedor/i.test(msg)) {
-          setSeletor(item);
+        // Só mostra alerta se o erro NÃO for sobre fornecedor (ex.: lote não encontrado).
+        // Qualquer outro caso (sem fornecedor, ou backend sem mensagem) → abre o seletor.
+        if (msg && !/fornecedor/i.test(msg)) {
+          alert(msg);
           return;
         }
-        alert(msg || 'Não foi possível gerar a rebaixa.');
+        setSeletor(item);
         return;
       }
       alert(res.mensagem || 'Rebaixa criada.');
@@ -64,7 +66,7 @@ export default function Estoque() {
     setLoading(true);
     setErro(null);
     try {
-      const response = await fetch(`http://localhost:8082/api/acompanhamento?incluirNovos=${incluirNovos}`);
+      const response = await fetch(`${API_BASE}/api/acompanhamento?incluirNovos=${incluirNovos}`);
       if (!response.ok) throw new Error('Falha ao buscar dados');
       setItens(await response.json());
     } catch (err) {
@@ -277,8 +279,9 @@ function SeletorFornecedor({ item, gerando, onFechar, onEscolher }) {
             <p className="text-sm text-gray-500">
               {item.produtoNome} — lote {item.numeroLote} · {item.quantidadeAtual} un.
             </p>
-            <p className="text-xs text-amber-600 mt-1">
-              Produto sem compra no Uniplus: sem custo conhecido, a rebaixa entra com valor R$ 0,00 (ajuste depois na Conta Fornecedor, se precisar).
+            <p className="text-xs text-gray-500 mt-1">
+              O custo é buscado no Uniplus (preço de custo do produto / última venda / última entrada).
+              Só fica R$ 0,00 se o produto não existir no Uniplus (cadastro de teste).
             </p>
           </div>
           <button onClick={onFechar} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>

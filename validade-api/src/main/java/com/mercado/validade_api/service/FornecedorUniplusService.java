@@ -126,6 +126,62 @@ public class FornecedorUniplusService {
         return r.isEmpty() ? null : r.get(0);
     }
 
+    /**
+     * Custo unitário do produto pelo EAN, independente do fornecedor. Cadeia de fallback:
+     * 1) custo cadastrado no produto (produto.precocusto);
+     * 2) custo congelado da última venda (item.sh_custo);
+     * 3) custo da última entrada de qualquer fornecedor (notafiscalitem).
+     * Retorna ZERO só quando o produto não existe no Uniplus (ex.: cadastro de teste).
+     */
+    public java.math.BigDecimal custoDoProduto(String ean) {
+        if (ean == null || ean.isBlank()) return java.math.BigDecimal.ZERO;
+
+        // 1) custo cadastrado no produto
+        java.math.BigDecimal c = um("""
+                SELECT precocusto FROM produto
+                WHERE ean = ? AND precocusto IS NOT NULL AND precocusto > 0
+                LIMIT 1
+                """, ean);
+        if (c != null) return c;
+
+        // 2) custo congelado da última venda
+        c = um("""
+                SELECT i.sh_custo
+                FROM produto p
+                JOIN item i ON i.produto = p.codigo
+                JOIN operacao o ON o.id = i.idoperacao
+                WHERE p.ean = ? AND i.sh_custo > 0
+                  AND o.empresa = '1' AND o.tipo = 1
+                  AND i.cancelado = 0 AND o.cancelado = 0
+                ORDER BY o.horafinal DESC
+                LIMIT 1
+                """, ean);
+        if (c != null) return c;
+
+        // 3) custo da última entrada (qualquer fornecedor)
+        c = um("""
+                SELECT ROUND(nfi.total / NULLIF(nfi.quantidade, 0), 2)
+                FROM produto p
+                JOIN notafiscalitem nfi ON nfi.idproduto = p.id
+                JOIN notafiscal nf ON nf.id = nfi.idnotafiscal
+                WHERE p.ean = ?
+                  AND nf.status NOT IN (2, 3)
+                  AND SUBSTRING(CAST(nfi.cfop AS VARCHAR), 1, 1) IN ('1','2','3')
+                ORDER BY nf.datainclusao DESC
+                LIMIT 1
+                """, ean);
+        return c != null ? c : java.math.BigDecimal.ZERO;
+    }
+
+    private java.math.BigDecimal um(String sql, Object... args) {
+        try {
+            java.math.BigDecimal v = erpJdbcTemplate.queryForObject(sql, java.math.BigDecimal.class, args);
+            return (v != null && v.signum() > 0) ? v : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
     /** Total de bonificações (CFOP 1910/1910a) recebidas de um fornecedor — crédito acumulado. */
     public java.math.BigDecimal bonificacaoTotalDoFornecedor(Long fornecedorId) {
         String sql = """
