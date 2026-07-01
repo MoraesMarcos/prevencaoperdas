@@ -39,12 +39,13 @@ public class RebaixaParceriaService {
     private final FornecedorUniplusService fornecedorService;
 
     // TUDO em 1 query: cobertura agrupada por produto + fornecedor (LATERAL), na janela de backlog.
+    // COALESCE(precobruto, precoliquido) trata linhas com precobruto nulo (mesma regra da auditoria de descontos).
     private static final String SQL_AGRUPADO = """
             SELECT s.ean, s.nome, s.cobertura, s.qtd, s.ultima,
                    f.fornecedor_id, f.fornecedor_nome, f.whatsapp
             FROM (
                 SELECT p.ean AS ean, MAX(p.nome) AS nome,
-                       SUM((i.precobruto - i.precoliquido) * i.quantidade) AS cobertura,
+                       SUM((COALESCE(i.precobruto, i.precoliquido) - i.precoliquido) * i.quantidade) AS cobertura,
                        SUM(i.quantidade) AS qtd,
                        MAX(o.horafinal) AS ultima
                 FROM item i
@@ -53,9 +54,10 @@ public class RebaixaParceriaService {
                 WHERE i.promocao = '2'
                   AND o.empresa = '1' AND o.tipo = 1
                   AND i.cancelado = 0 AND o.cancelado = 0
+                  AND COALESCE(i.precobruto, i.precoliquido) > i.precoliquido
                   AND o.horafinal >= now() - make_interval(days => ?)
                 GROUP BY p.ean
-                HAVING SUM((i.precobruto - i.precoliquido) * i.quantidade) > 0
+                HAVING SUM((COALESCE(i.precobruto, i.precoliquido) - i.precoliquido) * i.quantidade) > 0
             ) s
             LEFT JOIN LATERAL (
                 SELECT e.id AS fornecedor_id,
@@ -76,7 +78,7 @@ public class RebaixaParceriaService {
 
     // Cobertura pendente de um EAN (vendas de parceria depois de 'desde').
     private static final String SQL_PENDENTE = """
-            SELECT COALESCE(SUM((i.precobruto - i.precoliquido) * i.quantidade), 0) AS cobertura,
+            SELECT COALESCE(SUM((COALESCE(i.precobruto, i.precoliquido) - i.precoliquido) * i.quantidade), 0) AS cobertura,
                    COALESCE(SUM(i.quantidade), 0) AS qtd,
                    MAX(o.horafinal) AS ultima
             FROM item i
@@ -86,8 +88,46 @@ public class RebaixaParceriaService {
               AND i.promocao = '2'
               AND o.empresa = '1' AND o.tipo = 1
               AND i.cancelado = 0 AND o.cancelado = 0
+              AND COALESCE(i.precobruto, i.precoliquido) > i.precoliquido
               AND o.horafinal > CAST(? AS timestamp)
             """;
+
+    // Linhas cruas (sem agregação) para auditoria visual — mesmo formato da tela de auditoria de descontos.
+    private static final String SQL_LINHAS = """
+            SELECT o.horafinal AS data_hora,
+                   COALESCE(i.precobruto, i.precoliquido) AS preco_bruto,
+                   i.precoliquido AS preco_liquido,
+                   i.quantidade,
+                   (COALESCE(i.precobruto, i.precoliquido) - i.precoliquido) AS desconto_unitario,
+                   (COALESCE(i.precobruto, i.precoliquido) - i.precoliquido) * i.quantidade AS desconto_linha
+            FROM item i
+            JOIN operacao o ON o.id = i.idoperacao
+            JOIN produto p  ON p.codigo = i.produto
+            WHERE p.ean = ?
+              AND i.promocao = '2'
+              AND o.empresa = '1' AND o.tipo = 1
+              AND i.cancelado = 0 AND o.cancelado = 0
+              AND COALESCE(i.precobruto, i.precoliquido) > i.precoliquido
+              AND o.horafinal > CAST(? AS timestamp)
+            ORDER BY o.horafinal DESC
+            """;
+
+    /** Lista as vendas individuais (sem agregação) que compõem a cobertura pendente do EAN — auditoria. */
+    @Transactional(readOnly = true)
+    public List<com.mercado.validade_api.dto.RebaixaParceriaLinhaDTO> listarLinhas(String ean) {
+        LocalDateTime desde = marcadorRepository.findById(ean)
+                .map(RebaixaParceriaMarcador::getProcessadoAte)
+                .orElse(LocalDateTime.now().minusDays(DIAS_BACKLOG));
+
+        return erpJdbcTemplate.query(SQL_LINHAS, (rs, n) -> com.mercado.validade_api.dto.RebaixaParceriaLinhaDTO.builder()
+                .dataHora(rs.getObject("data_hora", LocalDateTime.class))
+                .precoBruto(rs.getBigDecimal("preco_bruto"))
+                .precoLiquido(rs.getBigDecimal("preco_liquido"))
+                .quantidade(rs.getBigDecimal("quantidade"))
+                .descontoUnitario(rs.getBigDecimal("desconto_unitario"))
+                .descontoLinha(rs.getBigDecimal("desconto_linha"))
+                .build(), ean, java.sql.Timestamp.valueOf(desde));
+    }
 
     private record Pendente(BigDecimal cobertura, BigDecimal qtd, LocalDateTime ultima) {}
 

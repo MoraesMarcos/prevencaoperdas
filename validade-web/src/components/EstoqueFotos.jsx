@@ -91,6 +91,11 @@ export default function EstoqueFotos() {
                   <div className="flex items-center justify-between mt-2">
                     <span className="text-xs text-gray-500">Qtd {it.quantidadeAtual} · Lote {it.numeroLote}</span>
                   </div>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-gray-500">
+                      Vence {new Date(it.dataVencimento).toLocaleDateString('pt-BR')}
+                    </span>
+                  </div>
                   <div className="flex items-center justify-between mt-2">
                     <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${STATUS_COR[it.status] || ''}`}>{it.status}</span>
                     <span className={`text-xs font-semibold ${it.diasParaVencer <= 30 ? 'text-red-500' : 'text-gray-500'}`}>

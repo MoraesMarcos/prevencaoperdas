@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { TicketPercent, RefreshCw, AlertCircle, Users, Building2, CheckCircle2, X, Search } from 'lucide-react';
+import { TicketPercent, RefreshCw, AlertCircle, Users, Building2, CheckCircle2, X, Search, Eye } from 'lucide-react';
 
 import { API_BASE } from '../config';
 const API = `${API_BASE}/api/rebaixa-parceria`;
@@ -13,6 +13,7 @@ export default function RebaixaParceria() {
   const [erro, setErro] = useState(null);
   const [lancando, setLancando] = useState(null); // ean em processamento
   const [modal, setModal] = useState(null); // { item } quando escolhendo fornecedor
+  const [detalhe, setDetalhe] = useState(null); // item aberto na auditoria de linhas
 
   const carregar = async () => {
     setLoading(true);
@@ -97,17 +98,18 @@ export default function RebaixaParceria() {
                 <th className="p-4 font-bold">Produto</th>
                 <th className="p-4 font-bold">Fornecedor sugerido</th>
                 <th className="p-4 font-bold text-center">Qtd</th>
+                <th className="p-4 font-bold">Última venda</th>
                 <th className="p-4 font-bold text-right">Cobertura</th>
                 <th className="p-4 font-bold text-center">Quem paga?</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading && itens.length === 0 ? (
-                <tr><td colSpan="5" className="p-8 text-center text-gray-400">
+                <tr><td colSpan="6" className="p-8 text-center text-gray-400">
                   <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-blue-500" /> Carregando...
                 </td></tr>
               ) : itens.length === 0 ? (
-                <tr><td colSpan="5" className="p-8 text-center text-gray-500 font-medium">
+                <tr><td colSpan="6" className="p-8 text-center text-gray-500 font-medium">
                   <CheckCircle2 size={22} className="mx-auto mb-2 text-emerald-500" />
                   Nenhuma cobertura de parceria pendente.
                 </td></tr>
@@ -115,12 +117,26 @@ export default function RebaixaParceria() {
                 itens.map((it) => (
                   <tr key={it.ean} className="hover:bg-amber-50/30 transition-colors">
                     <td className="p-4">
-                      <div className="font-bold text-gray-900">{it.produtoNome}</div>
-                      <div className="text-xs text-gray-400">EAN {it.ean}</div>
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <div className="font-bold text-gray-900">{it.produtoNome}</div>
+                          <div className="text-xs text-gray-400">EAN {it.ean}</div>
+                        </div>
+                        <button
+                          onClick={() => setDetalhe(it)}
+                          title="Ver vendas que compõem esse valor"
+                          className="text-gray-400 hover:text-amber-600 shrink-0"
+                        >
+                          <Eye size={16} />
+                        </button>
+                      </div>
                     </td>
                     <td className="p-4 text-sm text-gray-600">{it.fornecedorNome}</td>
                     <td className="p-4 text-center font-bold text-gray-700">
                       {Number(it.quantidade || 0).toLocaleString('pt-BR')}
+                    </td>
+                    <td className="p-4 text-sm text-gray-500">
+                      {it.ultimaVenda ? new Date(it.ultimaVenda).toLocaleString('pt-BR') : '—'}
                     </td>
                     <td className="p-4 text-right font-bold text-amber-600 text-lg">{brl(it.coberturaPendente)}</td>
                     <td className="p-4">
@@ -162,7 +178,95 @@ export default function RebaixaParceria() {
           onEscolher={(fornId) => lancar(modal.item.ean, 'FORNECEDOR', fornId)}
         />
       )}
+
+      {detalhe && (
+        <DetalheLinhas item={detalhe} onFechar={() => setDetalhe(null)} />
+      )}
     </>
+  );
+}
+
+function DetalheLinhas({ item, onFechar }) {
+  const [linhas, setLinhas] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      setCarregando(true);
+      setErro(null);
+      try {
+        const r = await fetch(`${API}/detalhes?ean=${encodeURIComponent(item.ean)}`);
+        if (!r.ok) throw new Error();
+        setLinhas(await r.json());
+      } catch {
+        setErro('Não foi possível carregar as vendas detalhadas.');
+      } finally {
+        setCarregando(false);
+      }
+    })();
+  }, [item.ean]);
+
+  const somaLinha = linhas.reduce((s, l) => s + Number(l.descontoLinha || 0), 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4" onClick={onFechar}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-5 border-b border-gray-200">
+          <div>
+            <h3 className="font-bold text-lg text-gray-900">Vendas que compõem a cobertura</h3>
+            <p className="text-sm text-gray-500">{item.produtoNome} — EAN {item.ean}</p>
+          </div>
+          <button onClick={onFechar} className="text-gray-400 hover:text-gray-700"><X size={22} /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1">
+          {carregando ? (
+            <p className="p-8 text-center text-gray-400"><RefreshCw size={20} className="animate-spin mx-auto mb-2" /> Carregando...</p>
+          ) : erro ? (
+            <p className="p-8 text-center text-red-600">{erro}</p>
+          ) : linhas.length === 0 ? (
+            <p className="p-8 text-center text-gray-400">Nenhuma venda encontrada.</p>
+          ) : (
+            <table className="w-full text-left text-sm border-collapse">
+              <thead className="sticky top-0 bg-gray-50">
+                <tr className="text-xs uppercase text-gray-500 border-b">
+                  <th className="p-3">Data/Hora</th>
+                  <th className="p-3 text-right">Preço bruto</th>
+                  <th className="p-3 text-right">Preço líquido</th>
+                  <th className="p-3 text-center">Qtd</th>
+                  <th className="p-3 text-right">Desconto unit.</th>
+                  <th className="p-3 text-right">Desconto da linha</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {linhas.map((l, i) => (
+                  <tr key={i} className="hover:bg-amber-50/30">
+                    <td className="p-3 text-gray-600">
+                      {l.dataHora ? new Date(l.dataHora).toLocaleString('pt-BR') : '—'}
+                    </td>
+                    <td className="p-3 text-right">{brl(l.precoBruto)}</td>
+                    <td className="p-3 text-right">{brl(l.precoLiquido)}</td>
+                    <td className="p-3 text-center font-semibold">{Number(l.quantidade || 0).toLocaleString('pt-BR')}</td>
+                    <td className="p-3 text-right text-gray-600">{brl(l.descontoUnitario)}</td>
+                    <td className="p-3 text-right font-bold text-amber-600">{brl(l.descontoLinha)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {!carregando && !erro && linhas.length > 0 && (
+          <div className="p-4 border-t border-gray-200 flex justify-between items-center bg-gray-50">
+            <span className="text-sm text-gray-500">{linhas.length} venda(s)</span>
+            <span className="text-sm font-bold text-gray-700">
+              Soma das linhas: <span className="text-amber-600">{brl(somaLinha)}</span>
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

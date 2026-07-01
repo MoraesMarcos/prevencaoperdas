@@ -258,6 +258,9 @@ function Secao({ titulo, itens, onFinalizar, onRemover, ativo }) {
           <tbody className="divide-y divide-gray-100">
             {itens.map((l) => (
               <tr key={l.id}>
+                <td className="p-3 text-xs text-gray-500 whitespace-nowrap">
+                  {l.criadoEm ? new Date(l.criadoEm).toLocaleDateString('pt-BR') : '—'}
+                </td>
                 <td className="p-3">
                   <span className={`px-2 py-0.5 rounded text-xs font-bold ${l.sinal > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>{l.tipo}</span>
                 </td>
