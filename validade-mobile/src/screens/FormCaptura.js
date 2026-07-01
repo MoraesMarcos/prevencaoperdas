@@ -26,6 +26,30 @@ function formatarDataBR(isoString) {
   return `${d}/${m}/${y}`;
 }
 
+/**
+ * Alert.alert do React Native não tem implementação real na Web (react-native-web
+ * não simula o diálogo nativo). Este helper usa window.confirm/alert na Web e cai
+ * no Alert.alert nativo no celular. `botoes` segue o mesmo formato do Alert.alert:
+ * [{ text, style, onPress }]. Só suporta 1 ou 2 botões (é o que este form usa).
+ */
+function alertar(titulo, mensagem, botoes) {
+  if (Platform.OS !== 'web') {
+    Alert.alert(titulo, mensagem, botoes);
+    return;
+  }
+  const texto = mensagem ? `${titulo}\n\n${mensagem}` : titulo;
+  if (!botoes || botoes.length <= 1) {
+    window.alert(texto);
+    if (botoes && botoes[0] && botoes[0].onPress) botoes[0].onPress();
+    return;
+  }
+  const cancelar = botoes.find(b => b.style === 'cancel') || botoes[0];
+  const confirmar = botoes.find(b => b.style !== 'cancel') || botoes[botoes.length - 1];
+  const confirmou = window.confirm(texto); // OK = confirmar, Cancelar = cancelar
+  const escolhido = confirmou ? confirmar : cancelar;
+  if (escolhido && escolhido.onPress) escolhido.onPress();
+}
+
 export default function FormCaptura({ codigoBarras, onVoltar }) {
   const [loading, setLoading] = useState(false);
   const [fotos, setFotos] = useState([]); // data URIs base64
@@ -64,7 +88,7 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
       const resposta = await fetch(`${API_LOTE_ABERTO}?codigoBarras=${encodeURIComponent(codigo)}`);
       const dados = await resposta.json();
       if (dados.existeLoteAberto) {
-        Alert.alert(
+        alertar(
           'Lote em aberto',
           `Este produto já tem um lote em aberto (Lote ${dados.numeroLote}, ${dados.quantidadeRestante} un. restantes, vence em ${formatarDataBR(dados.dataVencimento)}).\n\nDeseja cadastrar um NOVO lote mesmo assim?`,
           [
@@ -139,7 +163,7 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
   const tirarFoto = async () => {
     const permissao = await ImagePicker.requestCameraPermissionsAsync();
     if (!permissao.granted) {
-      Alert.alert('Permissão', 'Precisamos da câmara para tirar a foto do produto.');
+      alertar('Permissão', 'Precisamos da câmara para tirar a foto do produto.');
       return;
     }
     const resultado = await ImagePicker.launchCameraAsync(opcoesImagem);
@@ -157,11 +181,11 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
 
   const salvarDados = async () => {
     if (!form.nome.trim()) {
-      Alert.alert("Atenção", "Preencha o Nome do Produto.");
+      alertar("Atenção", "Preencha o Nome do Produto.");
       return;
     }
     if (!form.numeroLote || !form.quantidadeInicial || !form.dataVencimento) {
-      Alert.alert("Atenção", "Preencha o Lote, Quantidade e a Data de Vencimento.");
+      alertar("Atenção", "Preencha o Lote, Quantidade e a Data de Vencimento.");
       return;
     }
 
@@ -183,13 +207,13 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
       });
 
       if (response.ok) {
-        Alert.alert("Sucesso", "Lote registado com sucesso!");
+        alertar("Sucesso", "Lote registado com sucesso!");
         onVoltar();
       } else {
-        Alert.alert("Erro", "Falha ao gravar no servidor (Backend pode estar desligado).");
+        alertar("Erro", "Falha ao gravar no servidor (Backend pode estar desligado).");
       }
     } catch (error) {
-      Alert.alert("Erro de Ligação", "Não foi possível ligar ao Spring Boot. Confirmou o IP/backend?");
+      alertar("Erro de Ligação", "Não foi possível ligar ao Spring Boot. Confirmou o IP/backend?");
       console.error(error);
     } finally {
       setLoading(false);
