@@ -11,6 +11,7 @@ const BASE_URL = `${API_BASE}/api`;
 const API_CAPTURAS = `${BASE_URL}/capturas`;
 const API_BUSCAR = `${BASE_URL}/produtos/buscar`;
 const API_PROXIMO_LOTE = `${BASE_URL}/capturas/proximo-lote`;
+const API_LOTE_ABERTO = `${BASE_URL}/capturas/lote-aberto`;
 
 function formatarDataISO(date) {
   const y = date.getFullYear();
@@ -49,11 +50,33 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
   });
 
   // Ao abrir, busca o produto no Uniplus pelo EAN (>=8 digitos) ou pelos ultimos digitos,
-  // e ja busca o proximo numero de lote sequencial para esse produto.
+  // ja busca o proximo numero de lote sequencial, e checa se ha um lote em aberto
+  // (ainda nao vendido) para perguntar ao operador antes de continuar.
   useEffect(() => {
     buscarProduto(codigoBarras);
     buscarProximoLote(codigoBarras);
+    checarLoteAberto(codigoBarras);
   }, [codigoBarras]);
+
+  const checarLoteAberto = async (codigo) => {
+    if (!codigo) return;
+    try {
+      const resposta = await fetch(`${API_LOTE_ABERTO}?codigoBarras=${encodeURIComponent(codigo)}`);
+      const dados = await resposta.json();
+      if (dados.existeLoteAberto) {
+        Alert.alert(
+          'Lote em aberto',
+          `Este produto já tem um lote em aberto (Lote ${dados.numeroLote}, ${dados.quantidadeRestante} un. restantes, vence em ${formatarDataBR(dados.dataVencimento)}).\n\nDeseja cadastrar um NOVO lote mesmo assim?`,
+          [
+            { text: 'Cancelar', style: 'cancel', onPress: onVoltar },
+            { text: 'Sim, novo lote', style: 'default' }
+          ]
+        );
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   const buscarProximoLote = async (codigo) => {
     if (!codigo) return;
@@ -244,19 +267,32 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
        </View>
 
        <Text style={styles.label}>Data de Vencimento</Text>
-       <TouchableOpacity style={styles.inputData} onPress={() => setMostrarCalendario(true)}>
-         <Text style={form.dataVencimento ? styles.inputDataTexto : styles.inputDataPlaceholder}>
-           {form.dataVencimento ? formatarDataBR(form.dataVencimento) : 'Toque para escolher a data'}
-         </Text>
-       </TouchableOpacity>
-       {mostrarCalendario && (
-         <DateTimePicker
-           value={dataSelecionada}
-           mode="date"
-           display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
-           minimumDate={new Date()}
-           onChange={onMudarData}
+       {Platform.OS === 'web' ? (
+         // @react-native-community/datetimepicker não tem versão web; usa o <input type="date"> nativo do navegador.
+         <input
+           type="date"
+           value={form.dataVencimento}
+           min={formatarDataISO(new Date())}
+           onChange={(e) => setForm(f => ({ ...f, dataVencimento: e.target.value }))}
+           style={webInputDataStyle}
          />
+       ) : (
+         <>
+           <TouchableOpacity style={styles.inputData} onPress={() => setMostrarCalendario(true)}>
+             <Text style={form.dataVencimento ? styles.inputDataTexto : styles.inputDataPlaceholder}>
+               {form.dataVencimento ? formatarDataBR(form.dataVencimento) : 'Toque para escolher a data'}
+             </Text>
+           </TouchableOpacity>
+           {mostrarCalendario && (
+             <DateTimePicker
+               value={dataSelecionada}
+               mode="date"
+               display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
+               minimumDate={new Date()}
+               onChange={onMudarData}
+             />
+           )}
+         </>
        )}
 
        <Text style={styles.label}>Evidências (fotos) — opcional</Text>
@@ -292,6 +328,19 @@ export default function FormCaptura({ codigoBarras, onVoltar }) {
     </ScrollView>
   );
 }
+
+// Estilo em objeto CSS puro para o <input type="date"> nativo do navegador (só usado na Web).
+const webInputDataStyle = {
+  backgroundColor: '#fff',
+  border: '1px solid #d1d5db',
+  padding: 15,
+  borderRadius: 10,
+  marginBottom: 15,
+  fontSize: 16,
+  width: '100%',
+  boxSizing: 'border-box',
+  fontFamily: 'inherit',
+};
 
 const styles = StyleSheet.create({
   container: { padding: 20, paddingTop: 30, flexGrow: 1 },

@@ -2,6 +2,8 @@ package com.mercado.validade_api.service;
 
 import com.mercado.validade_api.dto.CapturaRequestDTO;
 import com.mercado.validade_api.dto.CapturaResponseDTO;
+import com.mercado.validade_api.dto.GiroDTO;
+import com.mercado.validade_api.dto.LoteAbertoDTO;
 import com.mercado.validade_api.entity.LoteCaptura;
 import com.mercado.validade_api.entity.LoteEvidencia;
 import com.mercado.validade_api.entity.Produto;
@@ -30,6 +32,7 @@ public class CapturaService {
     private final ProdutoRepository produtoRepository;
     private final LoteCapturaRepository loteRepository;
     private final LoteEvidenciaRepository evidenciaRepository;
+    private final GiroService giroService;
 
     @Transactional
     public CapturaResponseDTO registrar(CapturaRequestDTO dto) {
@@ -78,6 +81,36 @@ public class CapturaService {
         return produtoRepository.findByCodigoBarras(codigoBarras)
                 .map(p -> (int) loteRepository.countByProdutoId(p.getId()) + 1)
                 .orElse(1);
+    }
+
+    /**
+     * Checa se o produto já tem um lote em aberto (ainda não totalmente vendido).
+     * Usado no app para perguntar ao operador antes de cadastrar outro lote do mesmo produto.
+     */
+    @Transactional(readOnly = true)
+    public LoteAbertoDTO loteAbertoDoProduto(String codigoBarras) {
+        var produtoOpt = produtoRepository.findByCodigoBarras(codigoBarras);
+        if (produtoOpt.isEmpty()) {
+            return LoteAbertoDTO.builder().existeLoteAberto(false).build();
+        }
+        var ultimoOpt = loteRepository.findFirstByProdutoIdOrderByCriadoEmDesc(produtoOpt.get().getId());
+        if (ultimoOpt.isEmpty()) {
+            return LoteAbertoDTO.builder().existeLoteAberto(false).build();
+        }
+        LoteCaptura ultimo = ultimoOpt.get();
+        LocalDate dataCaptura = ultimo.getCriadoEm() != null
+                ? ultimo.getCriadoEm().toLocalDate()
+                : LocalDate.now();
+
+        GiroDTO giro = giroService.calcular(codigoBarras, dataCaptura);
+        int restante = Math.max(0, ultimo.getQuantidadeInicial() - giro.getVendidoDesdeCaptura());
+
+        return LoteAbertoDTO.builder()
+                .existeLoteAberto(restante > 0)
+                .numeroLote(ultimo.getNumeroLote())
+                .quantidadeRestante(restante)
+                .dataVencimento(ultimo.getDataVencimento())
+                .build();
     }
 
     @Transactional(readOnly = true)

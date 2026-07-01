@@ -8,6 +8,14 @@ export default function ScannerScreen({ onScan }) {
   const [modalDigitar, setModalDigitar] = useState(false);
   const [codigoDigitado, setCodigoDigitado] = useState('');
 
+  const confirmarDigitado = () => {
+    const codigo = codigoDigitado.trim();
+    if (!codigo) return;
+    setModalDigitar(false);
+    setCodigoDigitado('');
+    onScan(codigo); // Mesmo caminho do scan: segue para o formulário
+  };
+
   // Verifica se o utilizador deu permissão para usar a câmara
   if (!permission) return <View />;
   if (!permission.granted) {
@@ -32,14 +40,6 @@ export default function ScannerScreen({ onScan }) {
 
     // Volta a ativar o scanner após 2 segundos caso o utilizador cancele
     setTimeout(() => setScanned(false), 2000);
-  };
-
-  const confirmarDigitado = () => {
-    const codigo = codigoDigitado.trim();
-    if (!codigo) return;
-    setModalDigitar(false);
-    setCodigoDigitado('');
-    onScan(codigo); // Mesmo caminho do scan: segue para o formulário
   };
 
   function renderModalDigitar() {
