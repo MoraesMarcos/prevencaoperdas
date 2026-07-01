@@ -39,4 +39,10 @@ public class AcompanhamentoController {
                 : null;
         return rebaixaService.gerarDoLote(loteId, fornecedorId);
     }
+
+    /** Gera a rebaixa do lote na conta do MERCADO (tipo REBAIXA_VALIDADE), em vez do fornecedor. */
+    @PostMapping("/{loteId}/gerar-rebaixa-mercado")
+    public RebaixaGeradaDTO gerarRebaixaMercado(@PathVariable UUID loteId) {
+        return rebaixaService.gerarNoMercado(loteId);
+    }
 }

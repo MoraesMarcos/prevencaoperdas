@@ -33,6 +33,10 @@ public class LancamentoMercado {
     @Column(name = "descricao")
     private String descricao;
 
+    // Lote de captura que originou este lançamento (rebaixa de validade). Evita duplicar.
+    @Column(name = "lote_id")
+    private UUID loteId;
+
     @Column(name = "data", nullable = false)
     private LocalDate data;
 

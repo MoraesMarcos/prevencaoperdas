@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, AlertCircle, CheckCircle2, Clock, RefreshCw, AlertTriangle, TrendingUp, TicketPercent, PackageCheck, Users, X, Search } from 'lucide-react';
+import { Package, AlertCircle, CheckCircle2, Clock, RefreshCw, AlertTriangle, TrendingUp, PackageCheck, Users, Building2, X, Search } from 'lucide-react';
 import { API_BASE } from '../config';
 
 const API_FORN = `${API_BASE}/api/fornecedores/buscar`;
@@ -13,7 +13,7 @@ export default function Estoque() {
   const [gerando, setGerando] = useState(null); // loteId em processamento
   const [seletor, setSeletor] = useState(null); // item aguardando escolha de fornecedor
 
-  // Faz a chamada de gerar-rebaixa; fornecedorId opcional. Retorna true se criou.
+  // Faz a chamada de gerar-rebaixa (fornecedor); fornecedorId opcional.
   const chamarGerar = async (loteId, fornecedorId) => {
     const r = await fetch(`${API_BASE}/api/acompanhamento/${loteId}/gerar-rebaixa`, {
       method: 'POST',
@@ -24,22 +24,12 @@ export default function Estoque() {
     return { ok: r.ok, res };
   };
 
-  const gerarRebaixa = async (item) => {
-    setGerando(item.loteId);
+  const gerarComFornecedor = async (loteId, fornecedorId) => {
+    setGerando(loteId);
     try {
-      const { ok, res } = await chamarGerar(item.loteId, null);
-      if (!ok) {
-        const msg = res.message || res.mensagem || '';
-        // Só mostra alerta se o erro NÃO for sobre fornecedor (ex.: lote não encontrado).
-        // Qualquer outro caso (sem fornecedor, ou backend sem mensagem) → abre o seletor.
-        if (msg && !/fornecedor/i.test(msg)) {
-          alert(msg);
-          return;
-        }
-        setSeletor(item);
-        return;
-      }
-      alert(res.mensagem || 'Rebaixa criada.');
+      const { ok, res } = await chamarGerar(loteId, fornecedorId);
+      alert(res.mensagem || res.message || (ok ? 'Rebaixa criada.' : 'Não foi possível.'));
+      setSeletor(null);
       await carregarDados();
     } catch {
       alert('Falha ao gerar rebaixa.');
@@ -48,12 +38,13 @@ export default function Estoque() {
     }
   };
 
-  const gerarComFornecedor = async (loteId, fornecedorId) => {
-    setGerando(loteId);
+  const gerarNoMercado = async (item) => {
+    if (!window.confirm(`Lançar a rebaixa de "${item.produtoNome}" na conta do mercado?`)) return;
+    setGerando(item.loteId);
     try {
-      const { ok, res } = await chamarGerar(loteId, fornecedorId);
-      alert(res.mensagem || res.message || (ok ? 'Rebaixa criada.' : 'Não foi possível.'));
-      setSeletor(null);
+      const r = await fetch(`${API_BASE}/api/acompanhamento/${item.loteId}/gerar-rebaixa-mercado`, { method: 'POST' });
+      const res = await r.json().catch(() => ({}));
+      alert(res.mensagem || res.message || (r.ok ? 'Rebaixa criada.' : 'Não foi possível.'));
       await carregarDados();
     } catch {
       alert('Falha ao gerar rebaixa.');
@@ -220,13 +211,22 @@ export default function Estoque() {
                             <CheckCircle2 size={14} /> Rebaixa gerada
                           </span>
                         ) : (
-                          <button
-                            onClick={() => gerarRebaixa(it)}
-                            disabled={gerando === it.loteId}
-                            className="mt-2 flex items-center gap-1 text-xs bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg font-semibold"
-                          >
-                            <TicketPercent size={14} /> {gerando === it.loteId ? 'Gerando...' : 'Gerar rebaixa'}
-                          </button>
+                          <div className="mt-2 flex items-center gap-1.5">
+                            <button
+                              onClick={() => setSeletor(it)}
+                              disabled={gerando === it.loteId}
+                              className="flex items-center gap-1 text-xs bg-blue-600 hover:bg-blue-500 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg font-semibold"
+                            >
+                              <Users size={13} /> Fornecedor
+                            </button>
+                            <button
+                              onClick={() => gerarNoMercado(it)}
+                              disabled={gerando === it.loteId}
+                              className="flex items-center gap-1 text-xs bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white px-2.5 py-1.5 rounded-lg font-semibold"
+                            >
+                              <Building2 size={13} /> {gerando === it.loteId ? '...' : 'Mercado'}
+                            </button>
+                          </div>
                         )
                       )}
                     </td>

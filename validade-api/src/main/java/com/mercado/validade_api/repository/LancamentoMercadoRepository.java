@@ -8,4 +8,7 @@ import java.util.UUID;
 
 public interface LancamentoMercadoRepository extends JpaRepository<LancamentoMercado, UUID> {
     List<LancamentoMercado> findAllByOrderByDataDesc();
+
+    // Idempotência da rebaixa de validade lançada no mercado (evita duplicar por lote).
+    boolean existsByLoteId(UUID loteId);
 }
